@@ -67,6 +67,7 @@ SENATE - Extract backbone using SDSM and save
 senate_list <- list()
   
 for (i in seq_along(senate_incidences)) {
+  tryCatch({
   # Save name to remember 
   name <- names(senate_incidences)[i]
     
@@ -85,6 +86,10 @@ for (i in seq_along(senate_incidences)) {
 
   # Append to senate_list
   senate_list[[i]] <- tibble::lst(name, object, matrix, df, dems_list, reps_list)
+  }, error = function(e) {
+    # Print an error message if the extraction fails
+    cat("Error extracting", name, ": ", conditionMessage(e), "\n")
+  })
 }
 
 ```
@@ -231,13 +236,14 @@ figure_A_results
 
 #### FIGURE B - SENATE
 
+
 ```{r}
 
 prop_pos_all_list_sen <- numeric(length(senate_list))
 prop_neg_all_list_sen<- numeric(length(senate_list))
 
 for (i in seq_along(senate_list)) {
-  matrix <- senate_list[[i]]
+  matrix <- senate_list[[i]]$matrix
   prop_pos_all_list_sen[i] <- nrow(subset(createDataFrame(matrix), tie == 1)) / nrow(createDataFrame(matrix))
   prop_neg_all_list_sen[i] <- nrow(subset(createDataFrame(matrix), tie == -1)) / nrow(createDataFrame(matrix))
 }
@@ -248,7 +254,7 @@ for (i in seq_along(senate_list)) {
 ```{r}
 # Create df 
 figure_B_results <- data.frame (
-  year = c('Senate_118'),
+  session = c(108, 111, 113, 114),
   prop_pos_all = c(prop_pos_all_list_sen),
   prop_neg_all = c(prop_neg_all_list_sen)
 )
@@ -265,18 +271,12 @@ prop_pos_within_house <- numeric(length(house_list))
 prop_neg_between_house <- numeric(length(house_list))
 
 for (i in seq_along(house_list)) {
-  # First extract the matrix from the list in house_110
-  object <- house_list[[i]]
-  
-  # Extract backbone using the Stochastic Degree Sequence Model
-  matrix <- as.matrix(sdsm(object$matrix, narrative = TRUE, signed = TRUE))
-  
   # Then create the dataframe
-  df <- createDataFrame(matrix)
+  df <- createDataFrame(house_list[[i]]$matrix)
   
   # Then create the legislators lists
-  dems_list <- subset(object$legislator, party == "D")
-  reps_list <- subset(object$legislator, party == "R")
+  dems_list <- house_list[[i]]$dems_list
+  reps_list <- house_list[[i]]$reps_list
   
   # Add columns "rep1_party" and "rep2_party"
   df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
@@ -307,11 +307,15 @@ prop_pos_within_senate <- numeric(length(senate_list))
 prop_neg_between_senate <- numeric(length(senate_list))
 
 for (i in seq_along(senate_list)) {
-  df <- createDataFrame(senate_list[[i]])
+  df <- createDataFrame(senate_list[[i]]$matrix)
   
+  # Then create the legislators lists
+  dems_list <- senate_list[[i]]$dems_list
+  reps_list <- senate_list[[i]]$reps_list
+    
   # Add columns "rep1_party" and "rep2_party"
-  df$rep1_party <- ifelse(df$rep1 %in% dem_list, "D", ifelse(df$rep1 %in% rep_list, "R", "NA"))
-  df$rep2_party <- ifelse(df$rep2 %in% dem_list, "D", ifelse(df$rep2 %in% rep_list, "R", "NA"))
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
 
   # Append proportions
   prop_pos_within_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party != "NA"))
@@ -323,7 +327,7 @@ for (i in seq_along(senate_list)) {
 ```{r}
 # Create df 
 figure_D_results <- data.frame (
-  year = names(senate_list),
+  session = c(108, 111, 113, 114),
   prop_pos_all = c(prop_pos_within_senate),
   prop_neg_all = c(prop_neg_between_senate)
 )
@@ -342,7 +346,7 @@ prop_neg_within_rep_house <- numeric(length(house_list))
   
 
 for (i in seq_along(house_list)) {
-  df <- createDataFrame(house_list[[i]])
+  df <- createDataFrame(house_list[[i]]$matrix)
   
   # Add columns "rep1_party" and "rep2_party"
   df$rep1_party <- ifelse(df$rep1 %in% dem_list, "D", ifelse(df$rep1 %in% rep_list, "R", "NA"))
@@ -381,11 +385,15 @@ prop_neg_within_rep_senate <- numeric(length(senate_list))
   
 
 for (i in seq_along(senate_list)) {
-  df <- createDataFrame(senate_list[[i]])
+  df <- createDataFrame(senate_list[[i]]$matrix)
+  
+  # Then create the legislators lists
+  dems_list <- senate_list[[i]]$dems_list
+  reps_list <- senate_list[[i]]$reps_list
   
   # Add columns "rep1_party" and "rep2_party"
-  df$rep1_party <- ifelse(df$rep1 %in% dem_list, "D", ifelse(df$rep1 %in% rep_list, "R", "NA"))
-  df$rep2_party <- ifelse(df$rep2 %in% dem_list, "D", ifelse(df$rep2 %in% rep_list, "R", "NA"))
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
   
   # Append proportions
   prop_neg_within_dem_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party == "D")), tie == -1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party == "D"))
@@ -399,7 +407,7 @@ for (i in seq_along(senate_list)) {
 ```{r}
 # Create df 
 figure_F_results <- data.frame (
-  year = names(senate_list),
+  session = c(108, 111, 113, 114),
   prop_neg_within_dem = c(prop_neg_within_dem_senate),
   prop_neg_within_rep = c(prop_neg_within_rep_senate)
 )
