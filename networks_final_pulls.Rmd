@@ -242,9 +242,9 @@ for (i in seq_along(house_list)) {
 ```{r}
 # Create df 
 figure_A_results <- data.frame (
-  year = names(house_list),
-  prop_pos_all = c(prop_pos_all_list_house),
-  prop_neg_all = c(prop_neg_all_list_house)
+  session = names(house_list),
+  prop_pos_all_H = c(prop_pos_all_list_house),
+  prop_neg_all_H = c(prop_neg_all_list_house)
 )
 
 figure_A_results
@@ -271,11 +271,18 @@ for (i in seq_along(senate_list)) {
 # Create df 
 figure_B_results <- data.frame (
   session = names(senate_list),
-  prop_pos_all = c(prop_pos_all_list_sen),
-  prop_neg_all = c(prop_neg_all_list_sen)
+  prop_pos_all_S = c(prop_pos_all_list_sen),
+  prop_neg_all_S = c(prop_neg_all_list_sen)
 )
 
 figure_B_results
+```
+
+
+```{r}
+df<-house_list$`108`$df
+
+nrow(df) == nrow(subset(df, tie==-1)) + nrow(subset(df, tie==1)) + nrow(subset(df, tie==0))
 ```
 
 
@@ -299,8 +306,9 @@ for (i in seq_along(house_list)) {
   df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
 
   # Append proportions
-  prop_pos_within_house[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party != "NA"))
-  prop_neg_between_house[i] <- nrow(subset((subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA")), tie == -1)) / nrow(subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA"))
+  prop_pos_within_house[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, tie == 1))
+  
+  prop_neg_between_house[i] <- nrow(subset((subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA")), tie == -1)) / nrow(subset(df, tie == -1))
 }
 
 ```
@@ -308,9 +316,9 @@ for (i in seq_along(house_list)) {
 ```{r}
 # Create df 
 figure_C_results <- data.frame (
-  year = names(house_list),
-  prop_pos_all = c(prop_pos_within_house),
-  prop_neg_all = c(prop_neg_between_house)
+  session = names(house_list),
+  prop_pos_within_H = c(prop_pos_within_house),
+  prop_neg_between_H = c(prop_neg_between_house)
 )
 
 figure_C_results
@@ -334,8 +342,9 @@ for (i in seq_along(senate_list)) {
   df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
 
   # Append proportions
-  prop_pos_within_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party != "NA"))
-  prop_neg_between_senate[i] <- nrow(subset((subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA")), tie == -1)) / nrow(subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA"))
+  prop_pos_within_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, tie == 1))
+    
+  prop_neg_between_senate[i] <- nrow(subset((subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA")), tie == -1)) / nrow(subset(df, tie == -1))
 }
 
 ```
@@ -344,8 +353,8 @@ for (i in seq_along(senate_list)) {
 # Create df 
 figure_D_results <- data.frame (
   session = names(senate_list),
-  prop_pos_all = c(prop_pos_within_senate),
-  prop_neg_all = c(prop_neg_between_senate)
+  prop_pos_within_S = c(prop_pos_within_senate),
+  prop_neg_between_S = c(prop_neg_between_senate)
 )
 
 figure_D_results
@@ -385,8 +394,8 @@ for (i in seq_along(house_list)) {
 # Create df 
 figure_E_results <- data.frame (
   session = names(house_list),
-  prop_neg_within_dem = c(prop_neg_within_dem_house),
-  prop_neg_within_rep = c(prop_neg_within_rep_house)
+  prop_neg_within_dem_H = c(prop_neg_within_dem_house),
+  prop_neg_within_rep_H = c(prop_neg_within_rep_house)
 )
 
 figure_E_results
@@ -428,8 +437,8 @@ for (i in seq_along(senate_list)) {
 # Create df 
 figure_F_results <- data.frame (
   session = names(senate_list),
-  prop_neg_within_dem = c(prop_neg_within_dem_senate),
-  prop_neg_within_rep = c(prop_neg_within_rep_senate)
+  prop_neg_within_dem_S = c(prop_neg_within_dem_senate),
+  prop_neg_within_rep_S = c(prop_neg_within_rep_senate)
 )
 
 figure_F_results
