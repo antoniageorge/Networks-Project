@@ -24,8 +24,8 @@ library(stringr)
 senate_incidences <- list()
 
 # Define the range of sessions (years)
-start_session <- 100
-end_session <- 117
+start_session <- 108
+end_session <- 118
 
 # Loop through each session and extract the incidence matrix
 for (session in start_session:end_session) {
@@ -61,6 +61,7 @@ print(names(senate_incidences))
 ```
 
 
+
 SENATE - Extract backbone using SDSM and save
 ```{r}
 
@@ -94,41 +95,50 @@ for (i in seq_along(senate_incidences)) {
 
 ```
 
+
+
+```{r}
+names(senate_list) <- c(108, 111, 113, 114, 115, 116, 117, 118)
+```
+
 Save the output.
 ```{r}
 save(senate_incidences, 
      senate_list, 
-     file="senate_incidences.rdata")
+     file="senate_data.rdata")
 ```
+
+*Note: The SDSM function is not working for sessions 109, 110, and 112*
+
 
 
 ## HOUSE - Pull incidence matrices and data for each session
 ```{r}
 # Create an empty list to store the outputs
-house_list <- list()
+house_incidences <- list()
 
 # Define the range of sessions (years)
-start_session <- 116
-end_session <- 117
+start_session <- 108
+end_session <- 118
 
 # Loop through each session and extract the incidence matrix
 for (session in start_session:end_session) {
   # Initialize an empty variable to store the current session's output
-  senate_session <- NULL
+  house_session <- NULL
   
   tryCatch({
   # Extract incidence matrix for the current session
   house_session <- incidence.from.congress(
     session = session,
     format = "data",
-    types = "h" #c("s", "sjres") #c("h", "hjres")
+    types = c("hr", "hjres")      # "hjres"    # "hr"
   )
   
   # Generate a name for the output list item
   session_name <- paste0("house_", session)
   
   # Save the incidence matrix to the output list
-  output_list[[session_name]] <- house_session
+  house_incidences[[session_name]] <- house_session
   
   # Print a message indicating the progress
   cat("Session", session, "completed.\n")
@@ -140,14 +150,13 @@ for (session in start_session:end_session) {
 
 
 # Print the names of the output list items
-print(names(house_list))
+print(names(house_incidences))
 
 ```
 
 
 HOUSE - Extract backbone using SDSM and save
 ```{r}
-
 house_list <- list()
   
 for (i in seq_along(house_incidences)) {
@@ -173,15 +182,22 @@ for (i in seq_along(house_incidences)) {
 
 ```
 
+```{r}
+names(house_list) <- seq(108, 118)
+```
+
 Save the output.
 ```{r}
 save(house_incidences,
      house_list,
-     file="house_incidences.rdata")
+     file="house_data.rdata")
 ```
 
+*Note: The incidence function was failing to pull the House resolution ("hr") bills so the data for House 116th session is only based on 388 bills that were house joint resolution ("hjres") bills*
 
-## Recreating figures
+
+
+# Recreating the figures
 
 Function to extract pairs and their tie
 ```{r}
@@ -216,7 +232,7 @@ prop_pos_all_list_house <- numeric(length(house_list))
 prop_neg_all_list_house <- numeric(length(house_list))
 
 for (i in seq_along(house_list)) {
-  matrix <- house_list[[i]]
+  matrix <- house_list[[i]]$matrix
   prop_pos_all_list_house[i] <- nrow(subset(createDataFrame(matrix), tie == 1)) / nrow(createDataFrame(matrix))
   prop_neg_all_list_house[i] <- nrow(subset(createDataFrame(matrix), tie == -1)) / nrow(createDataFrame(matrix))
 }
@@ -254,7 +270,7 @@ for (i in seq_along(senate_list)) {
 ```{r}
 # Create df 
 figure_B_results <- data.frame (
-  session = c(108, 111, 113, 114),
+  session = names(senate_list),
   prop_pos_all = c(prop_pos_all_list_sen),
   prop_neg_all = c(prop_neg_all_list_sen)
 )
@@ -327,7 +343,7 @@ for (i in seq_along(senate_list)) {
 ```{r}
 # Create df 
 figure_D_results <- data.frame (
-  session = c(108, 111, 113, 114),
+  session = names(senate_list),
   prop_pos_all = c(prop_pos_within_senate),
   prop_neg_all = c(prop_neg_between_senate)
 )
@@ -348,9 +364,13 @@ prop_neg_within_rep_house <- numeric(length(house_list))
 for (i in seq_along(house_list)) {
   df <- createDataFrame(house_list[[i]]$matrix)
   
+  # Then extract the legislators lists
+  dems_list <- house_list[[i]]$dems_list
+  reps_list <- house_list[[i]]$reps_list
+  
   # Add columns "rep1_party" and "rep2_party"
-  df$rep1_party <- ifelse(df$rep1 %in% dem_list, "D", ifelse(df$rep1 %in% rep_list, "R", "NA"))
-  df$rep2_party <- ifelse(df$rep2 %in% dem_list, "D", ifelse(df$rep2 %in% rep_list, "R", "NA"))
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
   
   # Append proportions
   prop_neg_within_dem_house[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party == "D")), tie == -1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party == "D"))
@@ -364,7 +384,7 @@ for (i in seq_along(house_list)) {
 ```{r}
 # Create df 
 figure_E_results <- data.frame (
-  year = names(house_list),
+  session = names(house_list),
   prop_neg_within_dem = c(prop_neg_within_dem_house),
   prop_neg_within_rep = c(prop_neg_within_rep_house)
 )
@@ -387,7 +407,7 @@ prop_neg_within_rep_senate <- numeric(length(senate_list))
 for (i in seq_along(senate_list)) {
   df <- createDataFrame(senate_list[[i]]$matrix)
   
-  # Then create the legislators lists
+  # Then extract the legislators lists
   dems_list <- senate_list[[i]]$dems_list
   reps_list <- senate_list[[i]]$reps_list
   
@@ -407,7 +427,7 @@ for (i in seq_along(senate_list)) {
 ```{r}
 # Create df 
 figure_F_results <- data.frame (
-  session = c(108, 111, 113, 114),
+  session = names(senate_list),
   prop_neg_within_dem = c(prop_neg_within_dem_senate),
   prop_neg_within_rep = c(prop_neg_within_rep_senate)
 )
@@ -421,13 +441,13 @@ figure_F_results
 
 ```{r}
 
-# save(figure_A_results,
-#      figure_B_results,
-#      figure_C_results,
-#      figure_D_results,
-#      figure_E_results,
-#      figure_F_results,
-#      file = "paper_replication_data.rdata"
-#      )
+save(figure_A_results,
+     figure_B_results,
+     figure_C_results,
+     figure_D_results,
+     figure_E_results,
+     figure_F_results,
+     file = "paper_replication_data.rdata"
+     )
 
 ```
