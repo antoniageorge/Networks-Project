@@ -17,6 +17,11 @@ library(gridExtra)
 Load data.
 ```{r}
 load("paper_replication_data.rdata")
+
+# Remove 116th Congress from House lists - the data is incomplete
+figure_A_results <- figure_A_results[figure_A_results$session != 116, ] 
+figure_C_results <- figure_C_results[figure_C_results$session != 116, ] 
+figure_E_results <- figure_E_results[figure_E_results$session != 116, ] 
 ```
 
 ## Figures A & B
