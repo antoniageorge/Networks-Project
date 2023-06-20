@@ -114,10 +114,6 @@ congress_chambers_merge
 These ids below are the presidents and an anonymous person sitting in the first congress which we will discard as we do not have information about their initial party beliefs.
 
 ```{r}
-congressman_ids[ !(congressman_ids %in% congressman_ids_merge)]
-```
-
-```{r}
 cast_code_map <- function(vec) {
   mapping <- c("0", "1", "1", "1", "6", "6", "6", "9", "9","9")
   vec[vec %in% c(2,3)] = 1
@@ -159,6 +155,21 @@ build_adj_mat <- function(congress_id, chamber_id) {
   
   return(bbone)
 }
+```
+
+```{r}
+result <- data_members %>%
+  filter(chamber != "President") %>%
+  group_by(congress, chamber,party_code) %>%
+  summarise(num_entries = n()) %>%
+  arrange(congress, chamber,party_code)%>%
+  group_by(congress, chamber) %>%
+  top_n(1, num_entries) %>%
+  ungroup()
+```
+
+```{r}
+
 ```
 
 ```{r}
@@ -226,18 +237,40 @@ figure_B_results <- data.frame (
 ```
 
 ```{r}
-library(ggplot2)
-ggplot(figure_A_results, aes(x = congress)) +
-  geom_line(aes(y = prop_pos_all, color = "Positive")) +
-  geom_line(aes(y = prop_neg_all, color = "Negative")) +
-  labs(x = "Congress", y = "Proportion", color = "Line") +
-  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") 
+power_senate <- result[result$chamber == 'Senate',]
+power_senate<- power_senate[power_senate$party_code == '200',]
+power_house <- result[result$chamber == 'House',]
+power_house<- power_house[power_house$party_code == '200',]
+```
 
-ggplot(figure_B_results, aes(x = congress)) +
+```{r}
+library(ggplot2)
+plot_A <- ggplot(figure_A_results, aes(x = congress)) +
   geom_line(aes(y = prop_pos_all, color = "Positive")) +
   geom_line(aes(y = prop_neg_all, color = "Negative")) +
   labs(x = "Congress", y = "Proportion", color = "Line") +
-  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate") 
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plot_B <- ggplot(figure_B_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate") + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2,widths = c(10,10),heights = c(3,3))
+
 
 ```
 
@@ -290,7 +323,7 @@ for (i in seq_along(senate_pairs)) {
 
 figure_C_results <- data.frame (
   congress = congress_ids,
-  prop_pos_all = c(z),
+  prop_pos_all = c(prop_pos_within_house),
   prop_neg_all = c(prop_neg_between_house)
 )
 
@@ -305,27 +338,117 @@ figure_D_results <- data.frame (
 ```{r}
 library(ggplot2)
 
-ggplot(figure_A_results, aes(x = congress)) +
+plot_A <-ggplot(figure_A_results, aes(x = congress)) +
   geom_line(aes(y = prop_pos_all, color = "Positive")) +
   geom_line(aes(y = prop_neg_all, color = "Negative")) +
   labs(x = "Congress", y = "Proportion", color = "Line") +
-  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") 
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
-ggplot(figure_B_results, aes(x = congress)) +
+plot_B <- ggplot(figure_B_results, aes(x = congress)) +
   geom_line(aes(y = prop_pos_all, color = "Positive")) +
   geom_line(aes(y = prop_neg_all, color = "Negative")) +
   labs(x = "Congress", y = "Proportion", color = "Line") +
-  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate") 
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2,widths = c(10,10),heights = c(3,3))
 
-ggplot(figure_C_results, aes(x = congress)) +
+plot_C <- ggplot(figure_C_results, aes(x = congress)) +
   geom_line(aes(y = prop_pos_all, color = "Positive")) +
   geom_line(aes(y = prop_neg_all, color = "Negative")) +
   labs(x = "Congress", y = "Proportion", color = "Line") +
-  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure C - House") 
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure C - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
-ggplot(figure_D_results, aes(x = congress)) +
+plot_D <- ggplot(figure_D_results, aes(x = congress)) +
   geom_line(aes(y = prop_pos_all, color = "Positive")) +
   geom_line(aes(y = prop_neg_all, color = "Negative")) +
   labs(x = "Congress", y = "Proportion", color = "Line") +
-  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure D - Senate") 
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure D - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plots_C_D <- grid.arrange(plot_C, plot_D, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+ggsave(filename = "figures/A_&_B_votes.jpg", plot = plots_A_B, device = "jpeg")
+ggsave(filename = "figures/C_&_D_votes.jpg", plot = plots_C_D, device = "jpeg")
+
+```
+
+```{r}
+
+library(ggplot2)
+
+plot_A <-ggplot(figure_A_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+
+plot_B <- ggplot(figure_B_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+plot_C <- ggplot(figure_C_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure C - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+
+plot_D <- ggplot(figure_D_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure D - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+
+plots_C_D <- grid.arrange(plot_C, plot_D, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+ggsave(filename = "figures/A_&_B_votes_current.jpg", plot = plots_A_B, device = "jpeg")
+ggsave(filename = "figures/C_&_D_votes_current.jpg", plot = plots_C_D, device = "jpeg")
 ```
