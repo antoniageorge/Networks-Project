@@ -24,6 +24,20 @@ figure_C_results <- figure_C_results[figure_C_results$session != 116, ]
 figure_E_results <- figure_E_results[figure_E_results$session != 116, ] 
 ```
 
+```{r}
+figure_B_results$session <- as.numeric(figure_B_results$session)
+figure_A_results$session <- as.numeric(figure_A_results$session)
+figure_C_results$session <- as.numeric(figure_C_results$session)
+figure_D_results$session <- as.numeric(figure_D_results$session)
+figure_E_results$session <- as.numeric(figure_E_results$session)
+figure_F_results$session <- as.numeric(figure_F_results$session)
+
+republican_sessions <- data.frame(
+  session_start = c(108, 114, 115, 116, 118),
+  session_end = c(109, 114, 115, 117, 118)
+)
+```
+
 ## Figures A & B
 ```{r}
 
@@ -34,7 +48,13 @@ plot_A <- ggplot(data = figure_A_results, aes(x = session, y = prop_pos_all_H)) 
   labs(x = "Session", y = "Proportion", title = "Figure A") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top") +
-  coord_cartesian(ylim = c(0, 1))  # Set y-axis range
+  coord_cartesian(ylim = c(0, 1)) + # Set y-axis range
+    geom_rect(
+    data = republican_sessions,
+    aes(xmin = session_start - 0.5, xmax = session_end + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
 # Figure B
 plot_B <- ggplot(data = figure_B_results, aes(x = session, y = prop_pos_all_S)) +
@@ -43,7 +63,14 @@ plot_B <- ggplot(data = figure_B_results, aes(x = session, y = prop_pos_all_S)) 
   labs(x = "Session", y = "Proportion", title = "Figure B") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top") +
-  coord_cartesian(ylim = c(0, 1))  # Set y-axis range
+  coord_cartesian(ylim = c(0, 1)) + # Set y-axis range
+    geom_rect(
+    data = republican_sessions,
+    aes(xmin = session_start - 0.5, xmax = session_end + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+  
 
 # Arrange plots side by side
 plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2)
@@ -61,7 +88,13 @@ plot_C <- ggplot(data = figure_C_results, aes(x = session, y = prop_pos_within_H
   labs(x = "Session", y = "Proportion", title = "Figure C") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top") +
-  coord_cartesian(ylim = c(0.8, 1))  # Set y-axis range
+  coord_cartesian(ylim = c(0.8, 1)) + # Set y-axis range
+    geom_rect(
+    data = republican_sessions,
+    aes(xmin = session_start - 0.5, xmax = session_end + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
 # Figure D
 plot_D <- ggplot(data = figure_D_results, aes(x = session, y = prop_pos_within_S)) +
@@ -70,7 +103,13 @@ plot_D <- ggplot(data = figure_D_results, aes(x = session, y = prop_pos_within_S
   labs(x = "Session", y = "Proportion", title = "Figure D") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top") +
-  coord_cartesian(ylim = c(0.8, 1))  # Set y-axis range
+  coord_cartesian(ylim = c(0.8, 1))  + # Set y-axis range
+    geom_rect(
+    data = republican_sessions,
+    aes(xmin = session_start - 0.5, xmax = session_end + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
 # Arrange plots side by side
 plots_C_D <- grid.arrange(plot_C, plot_D, ncol = 2)
@@ -87,7 +126,13 @@ plot_E <- ggplot(data = figure_E_results, aes(x = session, y = prop_neg_within_d
   labs(x = "Session", y = "Proportion", title = "Figure E") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top") +
-  coord_cartesian(ylim = c(0, 0.1))  # Set y-axis range
+  coord_cartesian(ylim = c(0, 0.1))  + # Set y-axis range
+    geom_rect(
+    data = republican_sessions,
+    aes(xmin = session_start - 0.5, xmax = session_end + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
 # Figure F
 plot_F <- ggplot(data = figure_F_results, aes(x = session, y = prop_neg_within_dem_S)) +
@@ -96,7 +141,13 @@ plot_F <- ggplot(data = figure_F_results, aes(x = session, y = prop_neg_within_d
   labs(x = "Session", y = "Proportion", title = "Figure F") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position = "top") +
-  coord_cartesian(ylim = c(0, 0.1))  # Set y-axis range
+  coord_cartesian(ylim = c(0, 0.1))  + # Set y-axis range
+    geom_rect(
+    data = republican_sessions,
+    aes(xmin = session_start - 0.5, xmax = session_end + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
 
 # Arrange plots side by side
 plots_E_F <- grid.arrange(plot_E, plot_F, ncol = 2)
