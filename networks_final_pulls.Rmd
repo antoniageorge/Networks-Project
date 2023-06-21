@@ -617,7 +617,7 @@ summary(model4)
 
 
 
-### 108th Congress - HOUSE
+### 108th Congress - HOUSE OF REPRESENTATIVES 
 
 Obtain bonacich centrality measures of each representative in the 108th Congress.
 ```{r}
@@ -758,4 +758,183 @@ summary(model3_H)
 # Regression model
 model4_H <- lm(cosponsors_opposing_parties ~ bonacich_sponsor + sponsor.party, data = bills_108_H)
 summary(model4_H)
+```
+
+
+
+## Senate - 116th (R) through 117th (D) TOGETHER
+
+Obtain bonacich centrality measures of each senator in the 108th Congress.
+```{r}
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_116 <- graph_from_incidence_matrix(
+    incidence = senate_list$`116`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_117 <- graph_from_incidence_matrix(
+    incidence = senate_list$`117`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the bonacich power centralities of the nodes in the graph
+centralities_116 <- as.data.frame(power_centrality(graph_116)[1:100])
+colnames(centralities_116) <- c("power_centrality")
+
+centralities_117 <- as.data.frame(power_centrality(graph_117)[1:100])
+colnames(centralities_117) <- c("power_centrality")
+```
+
+
+Now, we want to see if centrality can play a role in bill passage.
+
+Extract weighted incidence matrix.
+```{r}
+# Extract incidence matrix for the current session, but this time weighted so the main sponsor is labeled as 2
+senate_116_weighted <-
+  incidence.from.congress(
+    session = 116,
+    format = "data",
+    weighted = TRUE,
+    types = c("s", "sjres")
+  ) 
+
+# Extract incidence matrix for the current session, but this time weighted so the main sponsor is labeled as 2
+senate_117_weighted <-
+  incidence.from.congress(
+    session = 117,
+    format = "data",
+    weighted = TRUE,
+    types = c("s", "sjres")
+  ) 
+```
+
+Extract the bills and incidence matrix.
+```{r}
+# Dataframe that shows the bills and the metadata pulled
+# Main sponsor's entry is 2 in incidence matrix
+
+bills_116 <- senate_116_weighted$bills
+matrix_116 <- senate_116_weighted$matrix
+
+bills_117 <- senate_117_weighted$bills
+matrix_117 <- senate_117_weighted$matrix
+
+```
+
+Extract the main sponsor of each bill.
+```{r}
+# Create an empty dataframe to store the results
+result_df_116 <- data.frame(Bill = character(), Senator = character(), stringsAsFactors = FALSE)
+result_df_117 <- data.frame(Bill = character(), Senator = character(), stringsAsFactors = FALSE)
+
+# Extract main sponsors
+main_sponsors_116 <- apply(matrix_116 == 2, 2, function(x) which(x == TRUE))
+
+main_sponsors_117 <- apply(matrix_117 == 2, 2, function(x) which(x == TRUE))
+
+# Populate the dataframe with bill names and senator names
+for (i in 1:length(main_sponsors_116)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Senator_", main_sponsors_116[[i]])
+  senator_name <- row.names(matrix_116)[as.numeric(sub("Senator_", "", sponsor))]
+  
+  result_df_116 <- rbind(result_df_116, data.frame(Bill = bill, Senator = senator_name))
+}
+
+for (i in 1:length(main_sponsors_117)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Senator_", main_sponsors_117[[i]])
+  senator_name <- row.names(matrix_117)[as.numeric(sub("Senator_", "", sponsor))]
+  
+  result_df_117 <- rbind(result_df_117, data.frame(Bill = bill, Senator = senator_name))
+}
+
+# Remove the prefix text
+result_df_116$Bill <- sub("Bill_", "", result_df_116$Bill)
+result_df_117$Bill <- sub("Bill_", "", result_df_117$Bill)
+
+# Set the index column of result_df
+rownames(result_df_116) <- colnames(matrix_116)
+rownames(result_df_117) <- colnames(matrix_117)
+
+# Display the resulting dataframe
+# results_df shows the main sponsor's name for each bill
+print(result_df_116)
+print(result_df_117)
+
+```
+
+Add the main sponsor and their bonacich centrality to the bill metadata.
+```{r}
+# Add sponsor name corresponding to each bill into bills_108 (from results_df)
+  # Join 'result_df' with 'bills_108' based on the 'bill' column
+bills_116 <- merge(bills_116, result_df_116, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_116)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+bills_117 <- merge(bills_117, result_df_117, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_117)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+# Add sponsor's bonacich power centrality
+  # Join 'centralities_108' with 'bills_108' based on the 'main_sponsor' column
+bills_116 <- merge(bills_116, centralities_116, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_116)[12] <- "bonacich_sponsor"
+
+bills_117 <- merge(bills_117, centralities_117, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_117)[12] <- "bonacich_sponsor"
+
+# Create a new column 'status_code' based on 'status'
+bills_116$status_code <- ifelse(bills_116$status == "Introduced", 0,
+                                ifelse(bills_116$status == "Passed senate", 1,
+                                       ifelse(bills_116$status == "Sent to president", 2, 
+                                              ifelse(bills_116$status == "Became law", 3, NaN))))
+
+bills_117$status_code <- ifelse(bills_117$status == "Introduced", 0,
+                                ifelse(bills_117$status == "Passed senate", 1,
+                                       ifelse(bills_117$status == "Sent to president", 2, 
+                                              ifelse(bills_117$status == "Became law", 3, NaN))))
+
+# Display the modified dataframe
+print(bills_116)
+print(bills_117)
+```
+
+Merge 116 and 117.
+```{r}
+Senate_116_117 <- rbind(bills_116, bills_117)
+```
+
+
+#### Question 1: Do senators with higher bonacich centrality get more bills passed (or get bills further through the process)?
+
+*Note: It goes "Introduced" -> "Passed senate" -> "Sent to president" -> "Became law"*
+```{r}
+# Regression model
+model_116_117 <- lm(status_code ~ bonacich_sponsor, data = Senate_116_117)
+summary(model_116_117)
+```
+
+#### Question 2: Do representatives with higher bonacich centrality get more senators from *opposing parties* to cosponsor their bills?
+
+First add a column that shows how many cosponsoring senators were from the opposing party (different party than the main sponsor).
+```{r}
+# Add column "cosponsors_opposing_parties" that shows how many cosponsors of the opposing party the bill received
+Senate_116_117$cosponsors_opposing_parties <- ifelse(Senate_116_117$sponsor.party == "R", Senate_116_117$cosponsors.d + Senate_116_117$cosponsors.i,
+                                                ifelse(Senate_116_117$sponsor.party == "D", Senate_116_117$cosponsors.r + Senate_116_117$cosponsors.i,
+                                                       Senate_116_117$cosponsors.r + Senate_116_117$cosponsors.d))
+```
+
+```{r}
+# Regression model
+model2_116_117 <- lm(cosponsors_opposing_parties ~ bonacich_sponsor, data = Senate_116_117)
+summary(model2_116_117)
 ```
