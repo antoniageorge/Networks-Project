@@ -1,8 +1,8 @@
 # Networks-Project
 
-Authors: Antonia George, Lenka Sefcakova, and Nicole Poynarova
+#### Authors: Antonia George, Lenka Sefcakova, and Nicole Poynarova
 
-This is a final project for the Networks 2 course, taught by Pau Milan, at BSE in the Data Science Methodology Master program.
+This is a final project for the Networks 2 course, taught by Pau Milán, at BSE in the Data Science Methodology Master program.
 
 Using congressional roll call vote data we aimed to measure how polarization has changed in the United States. The analysis done follows and extends the work done by Zachary P. Neal in his paper *A sign of the times? Weak and strong polarization in the U.S. Congress, T 1973–2016*. In Neal's paper, the analysis ends in 2016, but our analysis continues until 2023 to examine how polarization trends have developed in recent years.
 
