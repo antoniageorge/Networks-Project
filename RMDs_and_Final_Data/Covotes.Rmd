@@ -1,0 +1,454 @@
+---
+title: "Networks_project_votes"
+author: "Lenka Sefcakova, Antonia George"
+date: "2023-06-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Co-voting patterns on congress sitting analysis
+
+Data used:
+
+-   `HSall_votes` :
+
+    -   **congress**: Integer `1+`. The number of the congress that this member's row refers to. e.g. `115` for the 115th Congress (2017-2019)
+
+    -   **chamber**: `House`, `Senate`, or `President`. The chamber in which the member served.
+
+    -   **rollnumber**: Integer `1+`. Starts from 1 in the first rollcall of each congress. Excludes quorum calls and vacated votes.
+
+    -   **icpsr**: Integer `1-99999`. This is an ID code which identifies the member in question. In general, each member receives a single ICPSR identifier applicable to their entire career. A small number of members have received more than one: this can occur for members who have switched parties; as well as members who subsequently become president. Creating a new identifier allows a new NOMINATE estimate to be produced for separate appearances of a member in different roles.
+
+    -   **cast_code**: Integer `0-9`. Indicator of how the member voted.
+
+    -   **prob**: Estimated probability, based on NOMINATE, of the member making the vote as recorded.
+
+-   `HSall_members` (use icpsr and party_code)
+
+    -   **congress**: Integer `1+`. The number of the congress that this member's row refers to. e.g. `115` for the 115th Congress (2017-2019)
+
+    -   **chamber**: `House`, `Senate`, or `President`. The chamber in which the member served.
+
+    -   **icpsr**: Integer `1-99999`. This is an ID code which identifies the member in question. In general, each member receives a single ICPSR identifier applicable to their entire career. A small number of members have received more than one: this can occur for members who have switched parties; as well as members who subsequently become president. Creating a new identifier allows a new NOMINATE estimate to be produced for separate appearances of a member in different roles.
+
+    -   **state_icpsr**: Integer `0-99`. Identifier for the state represented by the member.
+
+    -   **district_code**: Integer `0-99`. Identifier for the district that the member represents within their state (e.g. `3` for the Alabama 3rd Congressional District). Senate members are given `district_code` 0. Members who represent historical "at-large" districts are assigned `99`, `98`, or `1` in various circumstances.
+
+    -   **state_abbrev**: String. Two-character postal abbreviation for state (e.g. `MO` for Missouri).
+
+    -   **party_code**: Integer `1-9999`. Identifying code for the member's party. Please see [documentation for Party Data](https://voteview.com/articles/data_help_parties) for more information about which `party_code` identifiers refer to which parties.
+
+    -   **occupancy**: Integer `1+`. ICPSR occupancy code. This item is considered legacy or incomplete information and has not been verified. In general, members receive `0` if they are the only occupant, `1` if they are the first occupant, `2` if they are the second occupant, etc.
+
+    -   **last_means**: Integer `1-5`. ICPSR Attain-Office Code. This is an indicator that reflects the member's last means of attaining office. This item is considered legacy or incomplete information and has not been verified. Members received `1` if they were elected in a general election, `2` if elected by special election, `3` if directly elected by a state legislature, and `5` if appointed.
+
+    -   **bioname**: String. Name of the member, surname first. For most members, agrees with the Biographical Directory of Congress.
+
+    -   **bioguide_id**: String. Member identifier in the Biographical Directory of Congress.
+
+    -   **born**: Integer. Year of member's birth.
+
+    -   **died**: Integer. Year of member's death.
+
+## Making a network of co-votes per one congress.
+
+```{r}
+library(igraph)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+data_votes <- read.csv('congress_data/HSall_votes.csv')
+```
+
+```{r}
+data_members_all <- read.csv('congress_data/HSall_members.csv')
+```
+
+```{r}
+data_members <- data_members_all[c('icpsr','congress','chamber', 'party_code')]
+```
+
+To do: (data_votes)
+
+1.  subset data based on congress and chamber
+2.  replace cast_code with simplified version 1,..9, -\> 1,6,9
+3.  map party code from data_members
+4.  build adjacency matrix with weighted edges based on co-voting (build edges based on roll number, add them over on congress and house)
+
+```{r}
+library(ggplot2)
+congress_ids <-unique(data_votes$congress)
+paste('The covered congresses in the data are ( from / to ) :')
+length(congress_ids)
+min(congress_ids)
+max(congress_ids)
+paste('The covered chambers in the data are : ')
+congress_chambers <-unique(data_votes$chamber)
+congress_chambers
+
+
+```
+
+```{r}
+merged_data <- merge(data_votes, data_members)
+```
+
+```{r}
+congress_ids_merge <-unique(merged_data$congress)
+paste('The covered congresses in the data are ( from / to ) :')
+length(congress_ids_merge)
+min(congress_ids_merge)
+max(congress_ids_merge)
+paste('The covered chambers in the data are : ')
+congress_chambers_merge <-unique(merged_data$chamber)
+congress_chambers_merge
+```
+
+These ids below are the presidents and an anonymous person sitting in the first congress which we will discard as we do not have information about their initial party beliefs.
+
+```{r}
+cast_code_map <- function(vec) {
+  mapping <- c("0", "1", "1", "1", "6", "6", "6", "9", "9","9")
+  vec[vec %in% c(2,3)] = 1
+  vec[vec %in% c(4,5)] = 6
+  vec[vec %in% c(7,8)] = 9
+  return(vec)
+}
+
+cast_code_bool <- function(vec) {
+  mapping <- c('0','1','1','1','0','0','0','0','0','0')
+  vec <- cast_code_map(vec)
+  vec[vec %in% c(6,9,0)] = 0
+  return(vec)
+}
+```
+
+```{r}
+library(backbone)
+
+build_adj_mat <- function(congress_id, chamber_id) {
+  sub <- merged_data[(merged_data$congress == congress_id) ,]
+  sub <- sub[(sub$chamber == chamber_id) ,]
+  sub$cast_code <- cast_code_bool(sub$cast_code)
+  sub <- sub[(sub$cast_code == 1) ,]
+  make_g <- as.data.frame(sub$icpsr)
+  colnames(make_g) <- c('icpsr')
+  colnames(make_g) <- as.character(colnames(make_g))
+  make_g$rollnumber <- sub$rollnumber
+  
+
+  B <- as_adjacency_matrix(graph.data.frame(make_g, directed = FALSE))
+  
+  column_names <- unique(make_g$rollnumber)
+  column_ind <- match(column_names, colnames(B))
+
+  B <- B[-column_ind, column_ind, drop = FALSE]
+
+  bbone <- sdsm(as.matrix(B), narrative = FALSE, signed = TRUE)
+  
+  return(bbone)
+}
+```
+
+```{r}
+result <- data_members %>%
+  filter(chamber != "President") %>%
+  group_by(congress, chamber,party_code) %>%
+  summarise(num_entries = n()) %>%
+  arrange(congress, chamber,party_code)%>%
+  group_by(congress, chamber) %>%
+  top_n(1, num_entries) %>%
+  ungroup()
+```
+
+```{r}
+
+```
+
+```{r}
+createDataFrame <- function(matrix) {
+  # Define upper triangle values
+  upper_triangle <- upper.tri(matrix)
+  upper_triangle_values <- matrix[upper_triangle]
+  
+  # Get the row and column names of the upper triangle elements
+  rep_pairs <- expand.grid(colnames(matrix), colnames(matrix))
+  rep_pairs <- rep_pairs[upper_triangle, ]
+  
+  # Create the dataframe with representative pairs
+  df <- data.frame(rep1 = rep_pairs$Var1,
+                   rep2 = rep_pairs$Var2,
+                   tie = upper_triangle_values)
+  
+  # Return the df
+  return(df)
+  
+  # Remove unnecessary stuff
+  rm(upper_triangle, upper_triangle_values, rep_pairs, df)
+}
+```
+
+```{r}
+senate_mat_list <- lapply(congress_ids,function(mat) build_adj_mat(mat,'Senate'))
+house_mat_list <- lapply(congress_ids,function(mat) build_adj_mat(mat,'House'))
+```
+
+```{r}
+senate_pairs <- lapply(senate_mat_list,createDataFrame)
+house_pairs <- lapply(house_mat_list,createDataFrame)
+```
+
+```{r}
+prop_pos_all_list_house <- numeric(length(house_pairs))
+prop_neg_all_list_house <- numeric(length(house_pairs))
+
+prop_pos_all_list_senate <- numeric(length(senate_pairs))
+prop_neg_all_list_senate <- numeric(length(senate_pairs))
+
+for (i in seq_along(house_pairs)) {
+  df <- house_pairs[[i]]
+  prop_pos_all_list_house[i] <- nrow(subset(df, tie == 1)) / nrow(df)
+  prop_neg_all_list_house[i] <- nrow(subset(df, tie == -1)) / nrow(df)
+  
+  df <- senate_pairs[[i]]
+  prop_pos_all_list_senate[i] <- nrow(subset(df, tie == 1)) / nrow(df)
+  prop_neg_all_list_senate[i] <- nrow(subset(df, tie == -1)) / nrow(df)
+}
+
+figure_A_results <- data.frame (
+  congress = congress_ids,
+  prop_pos_all = c(prop_pos_all_list_house),
+  prop_neg_all = c(prop_neg_all_list_house)
+)
+
+figure_B_results <- data.frame (
+  congress = congress_ids,
+  prop_pos_all = c(prop_pos_all_list_senate),
+  prop_neg_all = c(prop_neg_all_list_senate)
+)
+
+```
+
+```{r}
+power_senate <- result[result$chamber == 'Senate',]
+power_senate<- power_senate[power_senate$party_code == '200',]
+power_house <- result[result$chamber == 'House',]
+power_house<- power_house[power_house$party_code == '200',]
+```
+
+```{r}
+library(ggplot2)
+plot_A <- ggplot(figure_A_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plot_B <- ggplot(figure_B_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate") + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+
+```
+
+```{r}
+prop_pos_within_house <- numeric(length(house_pairs))
+prop_neg_between_house <- numeric(length(house_pairs))
+
+prop_pos_within_senate <- numeric(length(senate_pairs))
+prop_neg_between_senate <- numeric(length(senate_pairs))
+```
+
+data_members_all
+
+```{r}
+for (i in seq_along(house_pairs)) {
+
+  df <- house_pairs[[i]]
+  
+  data_members <- filter(data_members_all, congress==i & chamber == 'House')
+  merged_df <- merge(df, data_members, by.x = "rep1", by.y = "icpsr", all.x = TRUE, all.y = FALSE)
+  merged_df <- merge(merged_df, data_members, by.x = "rep2", by.y = "icpsr", all.x = TRUE, all.y = FALSE, suffixes = c("_rep1", "_rep2"))
+  
+  result_df <- merged_df[, c("rep1", "rep2", "tie", "party_code_rep1", "party_code_rep2")]
+  result_df$same_party_bool <- ifelse(result_df$party_code_rep1 == result_df$party_code_rep2, 1, 0)
+
+  prop_pos_within_house[[i]] <- nrow(subset((subset(result_df, same_party_bool ==1)), tie == 1)) / nrow(subset(result_df, same_party_bool ==1))
+  
+  prop_neg_between_house[[i]] <- nrow(subset((subset(result_df, same_party_bool ==0)), tie == -1)) / nrow(subset(result_df, same_party_bool ==0))
+  
+}
+
+for (i in seq_along(senate_pairs)) {
+  df <- senate_pairs[[i]]
+  
+  data_members <- filter(data_members_all, congress == i & chamber == 'Senate')
+  merged_df <- merge(df, data_members, by.x = "rep1", by.y = "icpsr", all.x = TRUE, all.y = FALSE)
+  merged_df <- merge(merged_df, data_members, by.x = "rep2", by.y = "icpsr", all.x = TRUE, all.y = FALSE, suffixes = c("_rep1", "_rep2"))
+  
+  result_df <- merged_df[, c("rep1", "rep2", "tie", "party_code_rep1", "party_code_rep2")]
+  result_df$same_party_bool <- ifelse(result_df$party_code_rep1 == result_df$party_code_rep2, 1, 0)
+  
+  prop_pos_within_senate[[i]] <- nrow(subset((subset(result_df, same_party_bool == 1)), tie == 1)) / nrow(subset(result_df, same_party_bool == 1))
+  
+  prop_neg_between_senate[[i]] <- nrow(subset((subset(result_df, same_party_bool == 0)), tie == -1)) / nrow(subset(result_df, same_party_bool == 0))
+}
+
+```
+
+```{r}
+
+figure_C_results <- data.frame (
+  congress = congress_ids,
+  prop_pos_all = c(prop_pos_within_house),
+  prop_neg_all = c(prop_neg_between_house)
+)
+
+figure_D_results <- data.frame (
+  congress = congress_ids,
+  prop_pos_all = c(prop_pos_within_senate),
+  prop_neg_all = c(prop_neg_between_senate)
+)
+
+```
+
+```{r}
+library(ggplot2)
+
+plot_A <-ggplot(figure_A_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plot_B <- ggplot(figure_B_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+plot_C <- ggplot(figure_C_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure C - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plot_D <- ggplot(figure_D_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure D - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x))
+
+plots_C_D <- grid.arrange(plot_C, plot_D, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+ggsave(filename = "figures/A_&_B_votes.jpg", plot = plots_A_B, device = "jpeg")
+ggsave(filename = "figures/C_&_D_votes.jpg", plot = plots_C_D, device = "jpeg")
+
+```
+
+```{r}
+
+library(ggplot2)
+
+plot_A <-ggplot(figure_A_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure A - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+
+plot_B <- ggplot(figure_B_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure B - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+plots_A_B <- grid.arrange(plot_A, plot_B, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+plot_C <- ggplot(figure_C_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure C - House") + # Set y-axis range
+    geom_rect(
+    data = power_house,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+
+plot_D <- ggplot(figure_D_results, aes(x = congress)) +
+  geom_line(aes(y = prop_pos_all, color = "Positive")) +
+  geom_line(aes(y = prop_neg_all, color = "Negative")) +
+  labs(x = "Congress", y = "Proportion", color = "Line") +
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "red"))+ggtitle("Figure D - Senate")  + # Set y-axis range
+    geom_rect(
+    data = power_senate,
+    aes(xmin = congress - 0.5, xmax = congress + 0.5,ymin = 0,ymax = 1),
+    fill = "darkred",
+    alpha = 0.2,
+    inherit.aes = FALSE)+scale_x_continuous(labels = function(x) as.integer(x), limits = c(108,118))
+
+plots_C_D <- grid.arrange(plot_C, plot_D, ncol = 2,widths = c(10,10),heights = c(3,3))
+
+ggsave(filename = "figures/A_&_B_votes_current.jpg", plot = plots_A_B, device = "jpeg")
+ggsave(filename = "figures/C_&_D_votes_current.jpg", plot = plots_C_D, device = "jpeg")
+```

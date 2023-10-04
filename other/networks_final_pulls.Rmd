@@ -1,0 +1,1110 @@
+---
+title: "Networks Project"
+output: html_document
+date: "2023-06-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load Libraries.
+```{r}
+library(incidentally)     # install.packages("incidentally")
+library(backbone)         # install.packages("backbone")
+library(igraph)
+library(tibble)
+library(stringr)
+library(dplyr)
+library(tidyr)
+```
+
+
+## SENATE - Pull incidence matrices and data for each session 
+```{r}
+# Create an empty list to store the outputs
+senate_incidences <- list()
+
+# Define the range of sessions (years)
+start_session <- 108
+end_session <- 118
+
+# Loop through each session and extract the incidence matrix
+for (session in start_session:end_session) {
+  # Initialize an empty variable to store the current session's output
+  senate_session <- NULL
+  
+  tryCatch({
+  # Extract incidence matrix for the current session
+  senate_session <- incidence.from.congress(
+    session = session,
+    format = "data",
+    types = c("s", "sjres")
+  ) 
+  
+  # Generate a name for the output list item
+  session_name <- paste0("senate_", session)
+  
+  # Save the incidence matrix to the output list
+  senate_incidences[[session_name]] <- senate_session
+  
+  # Print a message indicating the progress
+  cat("Session", session, "completed.\n")
+  }, error = function(e) {
+    # Print an error message if the extraction fails
+    cat("Error extracting session", session, ": ", conditionMessage(e), "\n")
+  })
+}
+
+
+# Print the names of the output list items
+print(names(senate_incidences))
+
+```
+
+
+
+SENATE - Extract backbone using SDSM and save
+```{r}
+
+senate_list <- list()
+  
+for (i in seq_along(senate_incidences)) {
+  tryCatch({
+  # Save name to remember 
+  name <- names(senate_incidences)[i]
+    
+  # First extract the matrix from the list extracted from incidentally
+  object <- senate_incidences[[i]]
+  
+  # Extract backbone using the Stochastic Degree Sequence Model
+  matrix <- as.matrix(sdsm(object$matrix, narrative = TRUE, signed = TRUE))
+  
+  # Then create the dataframe
+  df <- createDataFrame(matrix)
+  
+  # Then create the legislators lists
+  dems_list <- subset(object$legislator, party == "D")
+  reps_list <- subset(object$legislator, party == "R")
+
+  # Append to senate_list
+  senate_list[[i]] <- tibble::lst(name, object, matrix, df, dems_list, reps_list)
+  }, error = function(e) {
+    # Print an error message if the extraction fails
+    cat("Error extracting", name, ": ", conditionMessage(e), "\n")
+  })
+}
+
+```
+
+
+
+```{r}
+names(senate_list) <- c(108, 111, 113, 114, 115, 116, 117, 118)
+```
+
+Save the output.
+```{r}
+save(senate_incidences, 
+     senate_list, 
+     file="senate_data.rdata")
+```
+
+*Note: The SDSM function is not working for sessions 109, 110, and 112*
+```{r}
+senate_109_inc <- senate_incidences$senate_109$matrix
+```
+
+
+
+## HOUSE - Pull incidence matrices and data for each session
+```{r}
+# Create an empty list to store the outputs
+house_incidences <- list()
+
+# Define the range of sessions (years)
+start_session <- 108
+end_session <- 118
+
+# Loop through each session and extract the incidence matrix
+for (session in start_session:end_session) {
+  # Initialize an empty variable to store the current session's output
+  house_session <- NULL
+  
+  tryCatch({
+  # Extract incidence matrix for the current session
+  house_session <- incidence.from.congress(
+    session = session,
+    format = "data",
+    types = c("hr", "hjres")      # "hjres"    # "hr"
+  )
+  
+  # Generate a name for the output list item
+  session_name <- paste0("house_", session)
+  
+  # Save the incidence matrix to the output list
+  house_incidences[[session_name]] <- house_session
+  
+  # Print a message indicating the progress
+  cat("Session", session, "completed.\n")
+  }, error = function(e) {
+    # Print an error message if the extraction fails
+    cat("Error extracting session", session, ": ", conditionMessage(e), "\n")
+  })
+}
+
+
+# Print the names of the output list items
+print(names(house_incidences))
+
+```
+
+
+HOUSE - Extract backbone using SDSM and save
+```{r}
+house_list <- list()
+  
+for (i in seq_along(house_incidences)) {
+  # Save name to remember 
+  name <- names(house_incidences)[i]
+    
+  # First extract the matrix from the list extracted from incidentally
+  object <- house_incidences[[i]]
+  
+  # Extract backbone using the Stochastic Degree Sequence Model
+  matrix <- as.matrix(sdsm(object$matrix, narrative = TRUE, signed = TRUE))
+  
+  # Then create the dataframe
+  df <- createDataFrame(matrix)
+  
+  # Then create the legislators lists
+  dems_list <- subset(object$legislator, party == "D")
+  reps_list <- subset(object$legislator, party == "R")
+
+  # Append to house_list
+  house_list[[i]] <- tibble::lst(name, object, matrix, df, dems_list, reps_list)
+}
+
+```
+
+```{r}
+names(house_list) <- seq(108, 118)
+```
+
+Save the output.
+```{r}
+save(house_incidences,
+     house_list,
+     file="house_data.rdata")
+```
+
+*Note: The incidence function was failing to pull the House resolution ("hr") bills so the data for House 116th session is only based on 388 bills that were house joint resolution ("hjres") bills*
+
+
+
+# Recreating the figures
+
+Function to extract pairs and their tie
+```{r}
+## Function 
+createDataFrame <- function(matrix) {
+  # Define upper triangle values
+  upper_triangle <- upper.tri(matrix)
+  upper_triangle_values <- matrix[upper_triangle]
+  
+  # Get the row and column names of the upper triangle elements
+  rep_pairs <- expand.grid(colnames(matrix), colnames(matrix))
+  rep_pairs <- rep_pairs[upper_triangle, ]
+  
+  # Create the dataframe with representative pairs
+  df <- data.frame(rep1 = rep_pairs$Var1,
+                   rep2 = rep_pairs$Var2,
+                   tie = upper_triangle_values)
+  
+  # Return the df
+  return(df)
+  
+  # Remove unnecessary stuff
+  rm(upper_triangle, upper_triangle_values, rep_pairs, df)
+}
+```
+
+
+### FIGURE A - HOUSE
+```{r}
+
+prop_pos_all_list_house <- numeric(length(house_list))
+prop_neg_all_list_house <- numeric(length(house_list))
+
+for (i in seq_along(house_list)) {
+  matrix <- house_list[[i]]$matrix
+  prop_pos_all_list_house[i] <- nrow(subset(createDataFrame(matrix), tie == 1)) / nrow(createDataFrame(matrix))
+  prop_neg_all_list_house[i] <- nrow(subset(createDataFrame(matrix), tie == -1)) / nrow(createDataFrame(matrix))
+}
+
+```
+
+```{r}
+# Create df 
+figure_A_results <- data.frame (
+  session = names(house_list),
+  prop_pos_all_H = c(prop_pos_all_list_house),
+  prop_neg_all_H = c(prop_neg_all_list_house)
+)
+
+figure_A_results
+```
+
+#### FIGURE B - SENATE
+
+
+```{r}
+
+prop_pos_all_list_sen <- numeric(length(senate_list))
+prop_neg_all_list_sen<- numeric(length(senate_list))
+
+for (i in seq_along(senate_list)) {
+  matrix <- senate_list[[i]]$matrix
+  prop_pos_all_list_sen[i] <- nrow(subset(createDataFrame(matrix), tie == 1)) / nrow(createDataFrame(matrix))
+  prop_neg_all_list_sen[i] <- nrow(subset(createDataFrame(matrix), tie == -1)) / nrow(createDataFrame(matrix))
+}
+
+
+```
+
+```{r}
+# Create df 
+figure_B_results <- data.frame (
+  session = names(senate_list),
+  prop_pos_all_S = c(prop_pos_all_list_sen),
+  prop_neg_all_S = c(prop_neg_all_list_sen)
+)
+
+figure_B_results
+```
+
+
+```{r}
+df<-house_list$`108`$df
+
+nrow(df) == nrow(subset(df, tie==-1)) + nrow(subset(df, tie==1)) + nrow(subset(df, tie==0))
+```
+
+
+### FIGURE C - HOUSE
+
+```{r} 
+
+prop_pos_within_house <- numeric(length(house_list))
+prop_neg_between_house <- numeric(length(house_list))
+
+for (i in seq_along(house_list)) {
+  # Then create the dataframe
+  df <- createDataFrame(house_list[[i]]$matrix)
+  
+  # Then create the legislators lists
+  dems_list <- house_list[[i]]$dems_list
+  reps_list <- house_list[[i]]$reps_list
+  
+  # Add columns "rep1_party" and "rep2_party"
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
+
+  # Append proportions
+  prop_pos_within_house[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, tie == 1))
+  
+  prop_neg_between_house[i] <- nrow(subset((subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA")), tie == -1)) / nrow(subset(df, tie == -1))
+}
+
+```
+
+```{r}
+# Create df 
+figure_C_results <- data.frame (
+  session = names(house_list),
+  prop_pos_within_H = c(prop_pos_within_house),
+  prop_neg_between_H = c(prop_neg_between_house)
+)
+
+figure_C_results
+```
+
+#### FIGURE D - SENATE
+```{r} 
+
+prop_pos_within_senate <- numeric(length(senate_list))
+prop_neg_between_senate <- numeric(length(senate_list))
+
+for (i in seq_along(senate_list)) {
+  df <- createDataFrame(senate_list[[i]]$matrix)
+  
+  # Then create the legislators lists
+  dems_list <- senate_list[[i]]$dems_list
+  reps_list <- senate_list[[i]]$reps_list
+    
+  # Add columns "rep1_party" and "rep2_party"
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
+
+  # Append proportions
+  prop_pos_within_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party != "NA")), tie == 1)) / nrow(subset(df, tie == 1))
+    
+  prop_neg_between_senate[i] <- nrow(subset((subset(df, rep1_party != rep2_party & rep1_party != "NA" & rep2_party != "NA")), tie == -1)) / nrow(subset(df, tie == -1))
+}
+
+```
+
+```{r}
+# Create df 
+figure_D_results <- data.frame (
+  session = names(senate_list),
+  prop_pos_within_S = c(prop_pos_within_senate),
+  prop_neg_between_S = c(prop_neg_between_senate)
+)
+
+figure_D_results
+```
+
+
+#### FIGURE E - HOUSE
+
+Get the proportion of negative ties for each party
+```{r}
+
+prop_neg_within_dem_house <- numeric(length(house_list))
+prop_neg_within_rep_house <- numeric(length(house_list))
+  
+
+for (i in seq_along(house_list)) {
+  df <- createDataFrame(house_list[[i]]$matrix)
+  
+  # Then extract the legislators lists
+  dems_list <- house_list[[i]]$dems_list
+  reps_list <- house_list[[i]]$reps_list
+  
+  # Add columns "rep1_party" and "rep2_party"
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
+  
+  # Append proportions
+  prop_neg_within_dem_house[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party == "D")), tie == -1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party == "D"))
+    
+  prop_neg_within_rep_house[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party == "R")), tie == -1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party == "R"))
+    
+}
+
+```
+
+```{r}
+# Create df 
+figure_E_results <- data.frame (
+  session = names(house_list),
+  prop_neg_within_dem_H = c(prop_neg_within_dem_house),
+  prop_neg_within_rep_H = c(prop_neg_within_rep_house)
+)
+
+figure_E_results
+```
+
+
+
+
+#### FIGURE F - SENATE
+
+Get the proportion of negative ties for each party
+```{r}
+
+prop_neg_within_dem_senate <- numeric(length(senate_list))
+prop_neg_within_rep_senate <- numeric(length(senate_list))
+  
+
+for (i in seq_along(senate_list)) {
+  df <- createDataFrame(senate_list[[i]]$matrix)
+  
+  # Then extract the legislators lists
+  dems_list <- senate_list[[i]]$dems_list
+  reps_list <- senate_list[[i]]$reps_list
+  
+  # Add columns "rep1_party" and "rep2_party"
+  df$rep1_party <- ifelse(df$rep1 %in% dems_list$name, "D", ifelse(df$rep1 %in% reps_list$name, "R", "NA"))
+  df$rep2_party <- ifelse(df$rep2 %in% dems_list$name, "D", ifelse(df$rep2 %in% reps_list$name, "R", "NA"))
+  
+  # Append proportions
+  prop_neg_within_dem_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party == "D")), tie == -1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party == "D"))
+    
+  prop_neg_within_rep_senate[i] <- nrow(subset((subset(df, rep1_party == rep2_party & rep1_party == "R")), tie == -1)) / nrow(subset(df, rep1_party == rep2_party & rep1_party == "R"))
+    
+}
+
+```
+
+```{r}
+# Create df 
+figure_F_results <- data.frame (
+  session = names(senate_list),
+  prop_neg_within_dem_S = c(prop_neg_within_dem_senate),
+  prop_neg_within_rep_S = c(prop_neg_within_rep_senate)
+)
+
+figure_F_results
+```
+
+
+
+#### SAVE ALL DATA IN RDATA FILE
+
+```{r}
+
+save(figure_A_results,
+     figure_B_results,
+     figure_C_results,
+     figure_D_results,
+     figure_E_results,
+     figure_F_results,
+     file = "paper_replication_data.rdata"
+     )
+
+```
+
+
+# Part 2
+
+## Bonacich Centrality and importance in bill sponsorships
+
+
+### 108th Congress - SENATE
+
+Obtain bonacich centrality measures of each senator in the 108th Congress.
+```{r}
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_108 <- graph_from_incidence_matrix(
+    incidence = senate_list$`108`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the bonacich power centralities of the nodes in the graph
+centralities_108 <- as.data.frame(power_centrality(graph_108)[1:100])
+colnames(centralities_108) <- c("power_centrality")
+
+# Sort the centralities in descending order and extract the top ten nodes
+top_ten_nodes <- centralities_108[order(-centralities_108$power_centrality), ][1:10]
+
+# Subset the top ten- just to see who the most central senators are
+top_ten_central_108_S <- subset(centralities_108, power_centrality %in% top_ten_nodes)
+top_ten_central_108_S <- arrange(top_ten_central_108_S, desc(power_centrality))
+top_ten_central_108_S
+```
+
+Now, we want to see if centrality can play a role in bill passage.
+
+Extract weighted incidence matrix.
+```{r}
+# Extract incidence matrix for the current session, but this time weighted so the main sponsor is labeled as 2
+senate_108_weighted <-
+  incidence.from.congress(
+    session = 108,
+    format = "data",
+    weighted = TRUE,
+    types = c("s", "sjres")
+  ) 
+```
+
+Extract the bills and incidence matrix.
+```{r}
+# Dataframe that shows the bills and the metadata pulled
+# Main sponsor's entry is 2 in incidence matrix
+
+bills_108 <- senate_108_weighted$bills
+matrix_108 <- senate_108_weighted$matrix
+
+# Print a few rows and columns
+matrix_108[1:5, 1:5]
+```
+
+Extract the main sponsor of each bill.
+```{r}
+# Create an empty dataframe to store the results
+result_df <- data.frame(Bill = character(), Senator = character(), stringsAsFactors = FALSE)
+
+# Extract main sponsors
+main_sponsors <- apply(matrix_108 == 2, 2, function(x) which(x == TRUE))
+
+# Populate the dataframe with bill names and senator names
+for (i in 1:length(main_sponsors)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Senator_", main_sponsors[[i]])
+  senator_name <- row.names(matrix_108)[as.numeric(sub("Senator_", "", sponsor))]
+  
+  result_df <- rbind(result_df, data.frame(Bill = bill, Senator = senator_name))
+}
+
+# Remove the prefix text
+result_df$Bill <- sub("Bill_", "", result_df$Bill)
+
+# Set the index column of result_df
+rownames(result_df) <- colnames(matrix_108[main_sponsors, ])
+
+# Display the resulting dataframe
+# results_df shows the main sponsor's name for each bill
+print(result_df)
+
+```
+Add the main sponsor and their bonacich centrality to the bill metadata.
+```{r}
+# Add sponsor name corresponding to each bill into bills_108 (from results_df)
+  # Join 'result_df' with 'bills_108' based on the 'bill' column
+bills_108 <- merge(bills_108, result_df, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_108)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+# Add sponsor's bonacich power centrality
+  # Join 'centralities_108' with 'bills_108' based on the 'main_sponsor' column
+bills_108 <- merge(bills_108, centralities_108, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_108)[12] <- "bonacich_sponsor"
+
+# Create a new column 'status_code' based on 'status'
+bills_108$status_code <- ifelse(bills_108$status == "Introduced", 0,
+                                ifelse(bills_108$status == "Passed senate", 1,
+                                       ifelse(bills_108$status == "Sent to president", 2, 
+                                              ifelse(bills_108$status == "Became law", 3, NaN))))
+
+# Display the modified dataframe
+print(bills_108)
+```
+
+#### Question 1: Do senators with higher bonacich centrality get more bills passed (or get bills further through the process)?
+
+*Note: It goes "Introduced" -> "Passed senate" -> "Sent to president" -> "Became law"*
+```{r}
+# Regression model
+model1 <- lm(status_code ~ bonacich_sponsor, data = bills_108)
+summary(model1)
+```
+
+#### Question 2: Do senators with higher bonacich centrality get more senators from *opposing parties* to cosponsor their bills?
+
+First add a column that shows how many cosponsoring senators were from the opposing party (different party than the main sponsor).
+```{r}
+# Add column "cosponsors_opposing_parties" that shows how many cosponsors of the opposing party the bill received
+bills_108$cosponsors_opposing_parties <- ifelse(bills_108$sponsor.party == "R", bills_108$cosponsors.d + bills_108$cosponsors.i,
+                                                ifelse(bills_108$sponsor.party == "D", bills_108$cosponsors.r + bills_108$cosponsors.i,
+                                                       bills_108$cosponsors.r + bills_108$cosponsors.d))
+# View df
+bills_108
+```
+
+```{r}
+# Regression model
+model3 <- lm(cosponsors_opposing_parties ~ bonacich_sponsor, data = bills_108)
+summary(model3)
+```
+
+
+
+### 108th Congress - HOUSE OF REPRESENTATIVES 
+
+Obtain bonacich centrality measures of each representative in the 108th Congress.
+```{r}
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_108_H <- graph_from_incidence_matrix(
+    incidence = house_list$`108`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the bonacich power centralities of the nodes in the graph
+centralities_108_H <- as.data.frame(power_centrality(graph_108_H, exponent = 0.9)[1:490])
+colnames(centralities_108_H) <- c("power_centrality")
+
+# Sort the centralities in descending order and extract the top ten nodes
+top_ten_nodes_H <- centralities_108_H[order(-centralities_108_H$power_centrality), ][1:10]
+
+# Subset the top ten- just to see who the most central senators are
+top_ten_central_108_H <- subset(centralities_108_H, power_centrality %in% top_ten_nodes_H)
+top_ten_central_108_H <- arrange(top_ten_central_108_H, desc(power_centrality))
+top_ten_central_108_H
+```
+Now, we want to see if centrality can play a role in bill passage.
+
+Extract weighted incidence matrix.
+```{r}
+# Extract incidence matrix for the current session, but this time weighted so the main sponsor is labeled as 2
+house_108_weighted <-
+  incidence.from.congress(
+    session = 108,
+    format = "data",
+    weighted = TRUE,
+    types = c("hr", "hjres")
+  ) 
+```
+
+Extract the bills and incidence matrix.
+```{r}
+# Dataframe that shows the bills and the metadata pulled
+# Main sponsor's entry is 2 in incidence matrix
+
+bills_108_H <- house_108_weighted$bills
+matrix_108_H <- house_108_weighted$matrix
+
+# Print a few rows and columns
+matrix_108_H[1:5, 1:5]
+```
+
+Extract the main sponsor of each bill.
+```{r}
+# Create an empty dataframe to store the results
+result_df <- data.frame(Bill = character(), Representative = character(), stringsAsFactors = FALSE)
+
+# Extract main sponsors
+main_sponsors <- apply(matrix_108_H == 2, 2, function(x) which(x == TRUE))
+
+# Populate the dataframe with bill names and senator names
+for (i in 1:length(main_sponsors)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Rep_", main_sponsors[[i]])
+  rep_name <- row.names(matrix_108_H)[as.numeric(sub("Rep_", "", sponsor))]
+  
+  result_df <- rbind(result_df, data.frame(Bill = bill, Representative = rep_name))
+}
+
+# Remove the prefix text
+result_df$Bill <- sub("Bill_", "", result_df$Bill)
+
+# Set the index column of result_df
+rownames(result_df) <- colnames(matrix_108_H)
+
+# Display the resulting dataframe
+# results_df shows the main sponsor's name for each bill
+print(result_df)
+
+```
+
+Add the main sponsor and their bonacich centrality to the bill metadata.
+```{r}
+# Add sponsor name corresponding to each bill into bills_108 (from results_df)
+  # Join 'result_df' with 'bills_108' based on the 'bill' column
+bills_108_H <- merge(bills_108_H, result_df, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_108_H)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+# Add sponsor's bonacich power centrality
+  # Join 'centralities_108' with 'bills_108' based on the 'main_sponsor' column
+bills_108_H <- merge(bills_108_H, centralities_108_H, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_108_H)[12] <- "bonacich_sponsor"
+
+# Create a new column 'status_code' based on 'status'
+bills_108_H$status_code <- ifelse(bills_108_H$status == "Introduced", 0,
+                                ifelse(bills_108_H$status == "Passed senate", 1,
+                                       ifelse(bills_108_H$status == "Sent to president", 2, 
+                                              ifelse(bills_108_H$status == "Became law", 3, NaN))))
+
+# Display the modified dataframe
+print(bills_108_H)
+```
+
+#### Question 1: Do representatives with higher bonacich centrality get more bills passed (or get bills further through the process)?
+
+*Note: It goes "Introduced" -> "Passed senate" -> "Sent to president" -> "Became law"*
+```{r}
+# Regression model
+model1_H <- lm(status_code ~ bonacich_sponsor, data = bills_108_H)
+summary(model1_H)
+```
+
+
+#### Question 2: Do representatives with higher bonacich centrality get more senators from *opposing parties* to cosponsor their bills?
+
+First add a column that shows how many cosponsoring senators were from the opposing party (different party than the main sponsor).
+```{r}
+# Add column "cosponsors_opposing_parties" that shows how many cosponsors of the opposing party the bill received
+bills_108_H$cosponsors_opposing_parties <- ifelse(bills_108_H$sponsor.party == "R", bills_108_H$cosponsors.d + bills_108_H$cosponsors.i,
+                                                ifelse(bills_108_H$sponsor.party == "D", bills_108_H$cosponsors.r + bills_108_H$cosponsors.i,
+                                                       bills_108_H$cosponsors.r + bills_108_H$cosponsors.d))
+# View df
+bills_108_H
+```
+
+```{r}
+# Regression model
+model3_H <- lm(cosponsors_opposing_parties ~ bonacich_sponsor, data = bills_108_H)
+summary(model3_H)
+```
+
+
+
+### 117th Congress - SENATE
+
+Obtain bonacich centrality measures of each senator in the 108th Congress.
+```{r}
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_117 <- graph_from_incidence_matrix(
+    incidence = senate_list$`117`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the bonacich power centralities of the nodes in the graph
+centralities_117 <- as.data.frame(power_centrality(graph_117)[1:100])
+colnames(centralities_117) <- c("power_centrality")
+```
+
+Now, we want to see if centrality can play a role in bill passage.
+Extract weighted incidence matrix.
+```{r}
+# Extract incidence matrix for the session, but this time weighted so the main sponsor is labeled as 2
+senate_117_weighted <-
+  incidence.from.congress(
+    session = 117,
+    format = "data",
+    weighted = TRUE,
+    types = c("s", "sjres")
+  ) 
+```
+
+Extract the bills and incidence matrix.
+```{r}
+# Dataframe that shows the bills and the metadata pulled
+# Main sponsor's entry is 2 in incidence matrix
+
+bills_117_S <- senate_117_weighted$bills
+matrix_117_S <- senate_117_weighted$matrix
+
+# Print a few rows and columns
+matrix_117_S[1:5, 1:5]
+```
+
+Extract the main sponsor of each bill.
+```{r}
+# Create an empty dataframe to store the results
+result_df <- data.frame(Bill = character(), Senator = character(), stringsAsFactors = FALSE)
+
+# Extract main sponsors
+main_sponsors <- apply(matrix_117_S == 2, 2, function(x) which(x == TRUE))
+
+# Populate the dataframe with bill names and senator names
+for (i in 1:length(main_sponsors)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Senator_", main_sponsors[[i]])
+  senator_name <- row.names(matrix_117_S)[as.numeric(sub("Senator_", "", sponsor))]
+  
+  result_df <- rbind(result_df, data.frame(Bill = bill, Senator = senator_name))
+}
+
+# Remove the prefix text
+result_df$Bill <- sub("Bill_", "", result_df$Bill)
+
+# Set the index column of result_df
+rownames(result_df) <- colnames(matrix_117_S[main_sponsors, ])
+
+# Display the resulting dataframe
+# results_df shows the main sponsor's name for each bill
+print(result_df)
+```
+
+Add the main sponsor and their bonacich centrality to the bill metadata.
+```{r}
+# Add sponsor name corresponding to each bill into bills_117_S (from results_df)
+  # Join 'result_df' with 'bills_117_S' based on the 'bill' column
+bills_117_S <- merge(bills_117_S, result_df, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_117_S)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+# Add sponsor's bonacich power centrality
+  # Join 'centralities_108' with 'bills_117_S' based on the 'main_sponsor' column
+bills_117_S <- merge(bills_117_S, centralities_117, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_117_S)[12] <- "bonacich_sponsor"
+
+# Create a new column 'status_code' based on 'status'
+bills_117_S$status_code <- ifelse(bills_117_S$status == "Introduced", 0,
+                                ifelse(bills_117_S$status == "Passed senate", 1,
+                                       ifelse(bills_117_S$status == "Sent to president", 2, 
+                                              ifelse(bills_117_S$status == "Became law", 3, NaN))))
+
+# Display the modified dataframe
+print(bills_117_S)
+```
+
+#### Question 1: Do senators with higher bonacich centrality get more bills passed (or get bills further through the process)?
+
+*Note: It goes "Introduced" -> "Passed senate" -> "Sent to president" -> "Became law"*
+```{r}
+# Regression model
+model117_q1 <- lm(status_code ~ bonacich_sponsor, data = bills_117_S)
+summary(model117_q1)
+```
+
+#### Question 2: Do senators with higher bonacich centrality get more senators from *opposing parties* to cosponsor their bills?
+
+First add a column that shows how many cosponsoring senators were from the opposing party (different party than the main sponsor).
+```{r}
+# Add column "cosponsors_opposing_parties" that shows how many cosponsors of the opposing party the bill received
+bills_117_S$cosponsors_opposing_parties <- ifelse(bills_117_S$sponsor.party == "R", bills_117_S$cosponsors.d + bills_117_S$cosponsors.i,
+                                                ifelse(bills_117_S$sponsor.party == "D", bills_117_S$cosponsors.r + bills_117_S$cosponsors.i,
+                                                       bills_117_S$cosponsors.r + bills_117_S$cosponsors.d))
+# View df
+bills_117_S
+```
+
+```{r}
+# Regression model
+model117_q2 <- lm(cosponsors_opposing_parties ~ bonacich_sponsor, data = bills_117_S)
+summary(model117_q2)
+```
+
+
+### 118th Congress - SENATE
+
+Obtain bonacich centrality measures of each senator in the 108th Congress.
+```{r}
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_118 <- graph_from_incidence_matrix(
+    incidence = senate_list$`118`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the bonacich power centralities of the nodes in the graph
+centralities_118 <- as.data.frame(power_centrality(graph_118)[1:100])
+colnames(centralities_118) <- c("power_centrality")
+```
+
+Now, we want to see if centrality can play a role in bill passage.
+Extract weighted incidence matrix.
+```{r}
+# Extract incidence matrix for the session, but this time weighted so the main sponsor is labeled as 2
+senate_118_weighted <-
+  incidence.from.congress(
+    session = 118,
+    format = "data",
+    weighted = TRUE,
+    types = c("s", "sjres")
+  ) 
+```
+
+Extract the bills and incidence matrix.
+```{r}
+# Dataframe that shows the bills and the metadata pulled
+# Main sponsor's entry is 2 in incidence matrix
+
+bills_118_S <- senate_118_weighted$bills
+matrix_118_S <- senate_118_weighted$matrix
+
+# Print a few rows and columns
+matrix_118_S[1:5, 1:5]
+```
+
+Extract the main sponsor of each bill.
+```{r}
+# Create an empty dataframe to store the results
+result_df <- data.frame(Bill = character(), Senator = character(), stringsAsFactors = FALSE)
+
+# Extract main sponsors
+main_sponsors <- apply(matrix_118_S == 2, 2, function(x) which(x == TRUE))
+
+# Populate the dataframe with bill names and senator names
+for (i in 1:length(main_sponsors)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Senator_", main_sponsors[[i]])
+  senator_name <- row.names(matrix_118_S)[as.numeric(sub("Senator_", "", sponsor))]
+  
+  result_df <- rbind(result_df, data.frame(Bill = bill, Senator = senator_name))
+}
+
+# Remove the prefix text
+result_df$Bill <- sub("Bill_", "", result_df$Bill)
+
+# Set the index column of result_df
+rownames(result_df) <- colnames(matrix_118_S[main_sponsors, ])
+
+# Display the resulting dataframe
+# results_df shows the main sponsor's name for each bill
+print(result_df)
+```
+
+Add the main sponsor and their bonacich centrality to the bill metadata.
+```{r}
+# Add sponsor name corresponding to each bill into bills_118_S (from results_df)
+  # Join 'result_df' with 'bills_118_S' based on the 'bill' column
+bills_118_S <- merge(bills_118_S, result_df, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_118_S)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+# Add sponsor's bonacich power centrality
+  # Join 'centralities_108' with 'bills_118_S' based on the 'main_sponsor' column
+bills_118_S <- merge(bills_118_S, centralities_118, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_118_S)[12] <- "bonacich_sponsor"
+
+# Create a new column 'status_code' based on 'status'
+bills_118_S$status_code <- ifelse(bills_118_S$status == "Introduced", 0,
+                                ifelse(bills_118_S$status == "Passed senate", 1,
+                                       ifelse(bills_118_S$status == "Sent to president", 2, 
+                                              ifelse(bills_118_S$status == "Became law", 3, NaN))))
+
+# Display the modified dataframe
+print(bills_118_S)
+```
+
+#### Question 1: Do senators with higher bonacich centrality get more bills passed (or get bills further through the process)?
+
+*Note: It goes "Introduced" -> "Passed senate" -> "Sent to president" -> "Became law"*
+```{r}
+# Regression model
+model118_q1 <- lm(status_code ~ bonacich_sponsor, data = bills_118_S)
+summary(model118_q1)
+```
+
+#### Question 2: Do senators with higher bonacich centrality get more senators from *opposing parties* to cosponsor their bills?
+
+First add a column that shows how many cosponsoring senators were from the opposing party (different party than the main sponsor).
+```{r}
+# Add column "cosponsors_opposing_parties" that shows how many cosponsors of the opposing party the bill received
+bills_118_S$cosponsors_opposing_parties <- ifelse(bills_118_S$sponsor.party == "R", bills_118_S$cosponsors.d + bills_118_S$cosponsors.i,
+                                                ifelse(bills_118_S$sponsor.party == "D", bills_118_S$cosponsors.r + bills_118_S$cosponsors.i,
+                                                       bills_118_S$cosponsors.r + bills_118_S$cosponsors.d))
+# View df
+bills_118_S
+```
+
+```{r}
+# Regression model
+model118_q2 <- lm(cosponsors_opposing_parties ~ bonacich_sponsor, data = bills_118_S)
+summary(model118_q2)
+```
+
+
+
+
+### 118th Congress - HOUSE OF REPRESENTATIVES 
+
+Obtain bonacich centrality measures of each representative in the 108th Congress.
+```{r}
+# Get the igraph object from the incidence matrix, but this time pull the weighted one so that we can extract who is the MAIN sponsor of each bill
+graph_118_H <- graph_from_incidence_matrix(
+    incidence = house_list$`118`$matrix,
+    directed = FALSE,
+    mode = "all",
+    multiple = FALSE,
+    weighted = NULL,
+    add.names = NULL
+)
+
+# Get the bonacich power centralities of the nodes in the graph
+centralities_118_H <- as.data.frame(power_centrality(graph_118_H, exponent = 0.9)[1:436])
+colnames(centralities_118_H) <- c("power_centrality")
+```
+
+Now, we want to see if centrality can play a role in bill passage.
+Extract weighted incidence matrix.
+```{r}
+# Extract incidence matrix for the current session, but this time weighted so the main sponsor is labeled as 2
+house_118_weighted <-
+  incidence.from.congress(
+    session = 118,
+    format = "data",
+    weighted = TRUE,
+    types = c("hr", "hjres")
+  ) 
+```
+
+Extract the bills and incidence matrix.
+```{r}
+# Dataframe that shows the bills and the metadata pulled
+# Main sponsor's entry is 2 in incidence matrix
+
+bills_118_H <- house_118_weighted$bills
+matrix_118_H <- house_118_weighted$matrix
+
+# Print a few rows and columns
+matrix_118_H[1:5, 1:5]
+```
+
+Extract the main sponsor of each bill.
+```{r}
+# Create an empty dataframe to store the results
+result_df <- data.frame(Bill = character(), Representative = character(), stringsAsFactors = FALSE)
+
+# Extract main sponsors
+main_sponsors <- apply(matrix_118_H == 2, 2, function(x) which(x == TRUE))
+
+# Populate the dataframe with bill names and senator names
+for (i in 1:length(main_sponsors)) {
+  bill <- paste0("Bill_", i)
+  sponsor <- paste0("Rep_", main_sponsors[[i]])
+  rep_name <- row.names(matrix_118_H)[as.numeric(sub("Rep_", "", sponsor))]
+  
+  result_df <- rbind(result_df, data.frame(Bill = bill, Representative = rep_name))
+}
+
+# Remove the prefix text
+result_df$Bill <- sub("Bill_", "", result_df$Bill)
+
+# Set the index column of result_df
+rownames(result_df) <- colnames(matrix_118_H)
+
+# Display the resulting dataframe
+# results_df shows the main sponsor's name for each bill
+print(result_df)
+```
+
+Add the main sponsor and their bonacich centrality to the bill metadata.
+```{r}
+# Add sponsor name corresponding to each bill into bills_108 (from results_df)
+  # Join 'result_df' with 'bills_108' based on the 'bill' column
+bills_118_H <- merge(bills_118_H, result_df, by.x = "bill", by.y = 0, all.x = TRUE)
+colnames(bills_118_H)[10:11] <- c("Bill index(from matrix)", "main_sponsor")
+
+# Add sponsor's bonacich power centrality
+  # Join 'centralities_108' with 'bills_108' based on the 'main_sponsor' column
+bills_118_H <- merge(bills_118_H, centralities_118_H, by.x = "main_sponsor", by.y = 0, all.x = TRUE)
+colnames(bills_118_H)[12] <- "bonacich_sponsor"
+
+# Create a new column 'status_code' based on 'status'
+bills_118_H$status_code <- ifelse(bills_118_H$status == "Introduced", 0,
+                                ifelse(bills_118_H$status == "Passed senate", 1,
+                                       ifelse(bills_118_H$status == "Sent to president", 2, 
+                                              ifelse(bills_118_H$status == "Became law", 3, NaN))))
+
+# Display the modified dataframe
+print(bills_118_H)
+```
+
+#### Question 1: Do representatives with higher bonacich centrality get more bills passed (or get bills further through the process)?
+
+*Note: It goes "Introduced" -> "Passed senate" -> "Sent to president" -> "Became law"*
+```{r}
+# Regression model
+model118H_q1 <- lm(status_code ~ bonacich_sponsor, data = bills_118_H)
+summary(model118H_q1)
+```
+
+
+#### Question 2: Do representatives with higher bonacich centrality get more senators from *opposing parties* to cosponsor their bills?
+
+First add a column that shows how many cosponsoring senators were from the opposing party (different party than the main sponsor).
+```{r}
+# Add column "cosponsors_opposing_parties" that shows how many cosponsors of the opposing party the bill received
+bills_118_H$cosponsors_opposing_parties <- ifelse(bills_118_H$sponsor.party == "R", bills_118_H$cosponsors.d + bills_118_H$cosponsors.i,
+                                                ifelse(bills_118_H$sponsor.party == "D", bills_118_H$cosponsors.r + bills_118_H$cosponsors.i,
+                                                       bills_118_H$cosponsors.r + bills_118_H$cosponsors.d))
+# View df
+bills_118_H
+```
+
+```{r}
+# Regression model
+model118H_q2 <- lm(cosponsors_opposing_parties ~ bonacich_sponsor, data = bills_118_H)
+summary(model118H_q2)
+```
+
+
+
+
